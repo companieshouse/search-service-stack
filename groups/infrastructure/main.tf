@@ -1,6 +1,5 @@
 terraform {
-  required_version = "~> 1.0"
-
+  required_version = "~> 1.3"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -11,59 +10,14 @@ terraform {
       version = "~> 3.18.0"
     }
   }
-  backend "s3" {}
 }
 
 provider "aws" {
-  region = local.region
+  region  = var.aws_region
 }
 
-
-# Configure the remote state data source to acquire configuration
-# created through the code in ch-service-terraform/aws-mm-networks.
-data "terraform_remote_state" "networks" {
-  backend = "s3"
-  config = {
-    bucket = var.remote_state_bucket
-    key    = "${var.state_prefix}/${var.deploy_to}/${var.deploy_to}.tfstate"
-    region = var.aws_region
-  }
-}
-locals {
-  vpc_id            = data.terraform_remote_state.networks.outputs.vpc_id
-  application_ids   = data.terraform_remote_state.networks.outputs.application_ids
-}
-
-# Configure the remote state data source to acquire configuration
-# created through the code in the search-service-stack-configs stack in the
-# aws-common-infrastructure-terraform repo.
-data "terraform_remote_state" "search-service-stack-configs" {
-  backend = "s3"
-  config = {
-    bucket = var.aws_bucket # aws-common-infrastructure-terraform repo uses the same remote state bucket
-    key    = "aws-common-infrastructure-terraform/common-${var.aws_region}/search-service-stack-configs.tfstate"
-    region = var.aws_region
-  }
-}
-
-provider "vault" {
-  auth_login {
-    path = "auth/userpass/login/${var.vault_username}"
-    parameters = {
-      password = var.vault_password
-    }
-  }
-}
-
-data "vault_generic_secret" "secrets" {
-  path = "applications/${var.aws_profile}/${var.environment}/${local.stack_fullname}"
-}
-
-locals {
-  # stack name is hardcoded here in main.tf for this stack. It should not be overridden per env
-  stack_name     = "search-service"
-  stack_fullname = "${local.stack_name}-stack"
-  name_prefix    = "${local.stack_name}-${var.environment}"
+terraform {
+  backend "s3" {}
 }
 
 module "ecs-cluster" {
@@ -72,8 +26,8 @@ module "ecs-cluster" {
   stack_name                 = local.stack_name
   name_prefix                = local.name_prefix
   environment                = var.environment
-  vpc_id                     = local.vpc_id
-  subnet_ids                 = local.application_ids
+  vpc_id                     = data.aws_vpc.vpc.id
+  subnet_ids                 = local.application_subnet_ids
   ec2_key_pair_name          = var.ec2_key_pair_name
   ec2_instance_type          = var.ec2_instance_type
   ec2_image_id               = var.ec2_image_id
@@ -89,6 +43,6 @@ module "secrets" {
   stack_name  = local.stack_name
   name_prefix = local.name_prefix
   environment = var.environment
-  kms_key_id  = data.terraform_remote_state.search-service-stack-configs.outputs.services_stack_configs_kms_key_id
-  secrets     = data.vault_generic_secret.secrets.data
+  kms_key_id  = data.aws_kms_key.stack_configs.id
+  secrets     = local.parameter_store_secrets
 }
