@@ -5,10 +5,6 @@ variable "environment" {
 }
 
 # ECS Service
-variable "stack_name" {
-  type        = string
-  description = "The name of the Stack / ECS Cluster."
-}
 variable "name_prefix" {
   type        = string
   description = "The name prefix to be used for parameter name spacing."
