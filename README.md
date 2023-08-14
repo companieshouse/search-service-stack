@@ -1,1 +1,2 @@
-# search-service-stack-terraform
+# search-service-stack
+Infrastructure for the search service cluster
